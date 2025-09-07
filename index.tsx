@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI } from "@google/genai";
 
@@ -15,6 +15,14 @@ interface Expense {
 }
 
 const App: React.FC = () => {
+  // Auth State
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [authView, setAuthView] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  // App State
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
@@ -22,6 +30,38 @@ const App: React.FC = () => {
   const [insights, setInsights] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Effect to check for a logged-in user on component mount
+  useEffect(() => {
+    const loggedInUser = localStorage.getItem('app_currentUser');
+    if (loggedInUser) {
+      setCurrentUser(JSON.parse(loggedInUser));
+    }
+  }, []);
+
+  // Effect to load user's expenses when they log in
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('app_currentUser', JSON.stringify(currentUser));
+      const allExpenses = JSON.parse(localStorage.getItem('app_expenses') || '{}');
+      setExpenses(allExpenses[currentUser] || []);
+    } else {
+      localStorage.removeItem('app_currentUser');
+      setExpenses([]);
+    }
+    // Reset app state on user change
+    setInsights(null);
+    setError(null);
+  }, [currentUser]);
+  
+  // Effect to save expenses to localStorage whenever they change
+  useEffect(() => {
+    if (currentUser) {
+      const allExpenses = JSON.parse(localStorage.getItem('app_expenses') || '{}');
+      allExpenses[currentUser] = expenses;
+      localStorage.setItem('app_expenses', JSON.stringify(allExpenses));
+    }
+  }, [expenses, currentUser]);
 
   const totalExpenses = useMemo(() => {
     return expenses.reduce((total, expense) => total + expense.amount, 0);
@@ -87,9 +127,90 @@ const App: React.FC = () => {
     ));
   };
 
+  const handleRegister = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    const users = JSON.parse(localStorage.getItem('app_users') || '{}');
+    if (users[email]) {
+      setAuthError('User with this email already exists.');
+      return;
+    }
+    // NOTE: In a real app, never store passwords in plaintext. Always hash them.
+    users[email] = password;
+    localStorage.setItem('app_users', JSON.stringify(users));
 
+    const allExpenses = JSON.parse(localStorage.getItem('app_expenses') || '{}');
+    allExpenses[email] = [];
+    localStorage.setItem('app_expenses', JSON.stringify(allExpenses));
+
+    setCurrentUser(email);
+  };
+  
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    const users = JSON.parse(localStorage.getItem('app_users') || '{}');
+    if (users[email] && users[email] === password) {
+      setCurrentUser(email);
+    } else {
+      setAuthError('Invalid email or password.');
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setEmail('');
+    setPassword('');
+  };
+
+  // Render Auth view if no user is logged in
+  if (!currentUser) {
+    return (
+      <div className="auth-container">
+        <h1>AI Expense Tracker</h1>
+        <div className="form-card auth-card">
+          <h2>{authView === 'login' ? 'Login' : 'Register'}</h2>
+          <form onSubmit={authView === 'login' ? handleLogin : handleRegister} className="auth-form">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              aria-label="Email"
+              required
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              aria-label="Password"
+              required
+            />
+            {authError && <p className="auth-error" role="alert">{authError}</p>}
+            <button type="submit" className="auth-button">
+              {authView === 'login' ? 'Login' : 'Register'}
+            </button>
+          </form>
+          <p className="auth-toggle">
+            {authView === 'login' ? "Don't have an account? " : "Already have an account? "}
+            <button onClick={() => { setAuthView(authView === 'login' ? 'register' : 'login'); setAuthError(null); }}>
+              {authView === 'login' ? 'Register' : 'Login'}
+            </button>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Render main app if user is logged in
   return (
     <main className="container">
+      <header className="app-header">
+        <p className="user-info">Logged in as <strong>{currentUser}</strong></p>
+        <button onClick={handleLogout} className="logout-button">Logout</button>
+      </header>
+
       <h1>AI Expense Tracker</h1>
       <p className="subtitle">Track your spending and get smart financial insights.</p>
 
