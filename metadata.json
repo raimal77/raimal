@@ -1,5 +1,5 @@
 {
-  "name": "AI Expense Tracker",
-  "description": "Track your expenses and get AI-powered insights to manage your finances.",
+  "name": "Expense Tracker",
+  "description": "Track your expenses and get insights to manage your finances.",
   "requestFramePermissions": []
 }

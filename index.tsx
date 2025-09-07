@@ -5,7 +5,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { GoogleGenAI } from "@google/genai";
 
 interface Expense {
   id: number;
@@ -92,7 +91,7 @@ const App: React.FC = () => {
     setExpenses(expenses.filter(expense => expense.id !== id));
   };
 
-  const handleGetInsights = async () => {
+  const handleGetInsights = () => {
     if (expenses.length === 0) {
       setError("Please add some expenses before getting insights.");
       return;
@@ -101,30 +100,80 @@ const App: React.FC = () => {
     setError(null);
     setInsights(null);
 
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-      const prompt = `You are a helpful financial assistant. Analyze the following list of expenses and provide a brief summary of spending habits, identify the top spending category, and offer 2-3 actionable tips for saving money. Format the response clearly. Expenses: ${JSON.stringify(expenses.map(({description, amount, category}) => ({description, amount, category})))}`;
+    // Simulate analysis delay for better UX
+    setTimeout(() => {
+      try {
+        // 1. Calculate spending per category
+        const categoryTotals = expenses.reduce((acc, expense) => {
+          acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
+          return acc;
+        }, {} as Record<string, number>);
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-      });
-      
-      setInsights(response.text);
+        // 2. Find the top spending category
+        let topCategory = '';
+        let topCategoryAmount = 0;
+        for (const category in categoryTotals) {
+          if (categoryTotals[category] > topCategoryAmount) {
+            topCategory = category;
+            topCategoryAmount = categoryTotals[category];
+          }
+        }
 
-    } catch (err) {
-      console.error(err);
-      setError('Failed to generate insights. Please try again later.');
-    } finally {
-      setIsLoading(false);
-    }
+        // 3. Find the largest single expense
+        const largestExpense = expenses.reduce((max, expense) => expense.amount > max.amount ? expense : max, expenses[0]);
+
+        // 4. Generate tips based on top category
+        let tip = '';
+        switch (topCategory) {
+          case 'Food':
+            tip = 'Consider planning meals for the week or looking for deals at the grocery store to save on food costs.';
+            break;
+          case 'Shopping':
+            tip = 'Try making a shopping list before you go out and stick to it to avoid impulse buys.';
+            break;
+          case 'Entertainment':
+            tip = 'Look for free or low-cost entertainment options in your area, like parks or community events.';
+            break;
+          case 'Transport':
+            tip = 'If possible, try using public transport, carpooling, or biking to reduce transportation expenses.';
+            break;
+          default:
+            tip = 'Review your spending in this category to see if there are any non-essential items you can cut back on.';
+        }
+        
+        // 5. Build the insights string
+        const generatedInsights = `
+          **Spending Summary:**
+          Based on your entries, your top spending area is **${topCategory}**, with a total of **$${topCategoryAmount.toFixed(2)}**.
+
+          **Largest Expense:**
+          Your single largest expense was for "**${largestExpense.description}**" costing **$${largestExpense.amount.toFixed(2)}**.
+
+          **Actionable Tip:**
+          Since a significant portion of your budget goes to **${topCategory}**, here's a suggestion: ${tip}
+        `.trim().replace(/^\s+/gm, ''); // clean up indentation
+
+        setInsights(generatedInsights);
+      } catch (err) {
+        console.error(err);
+        setError('Failed to generate insights. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    }, 1500); // 1.5 second delay
   };
   
   const renderInsights = () => {
     if (!insights) return null;
-    return insights.split('\n').map((paragraph, index) => (
-      paragraph.trim() && <p key={index}>{paragraph}</p>
-    ));
+    return insights.split('\n').map((line, index) => {
+      if (line.trim() === '') return null;
+      // Simple markdown-like bolding for **text**
+      const parts = line.split('**');
+      const formattedLine = parts.map((part, i) => {
+        return i % 2 === 1 ? <strong key={i}>{part}</strong> : <span key={i}>{part}</span>;
+      });
+      return <p key={index}>{formattedLine}</p>;
+    });
   };
 
   const handleRegister = (e: React.FormEvent) => {
@@ -167,7 +216,7 @@ const App: React.FC = () => {
   if (!currentUser) {
     return (
       <div className="auth-container">
-        <h1>AI Expense Tracker</h1>
+        <h1>Expense Tracker</h1>
         <div className="form-card auth-card">
           <h2>{authView === 'login' ? 'Login' : 'Register'}</h2>
           <form onSubmit={authView === 'login' ? handleLogin : handleRegister} className="auth-form">
@@ -211,7 +260,7 @@ const App: React.FC = () => {
         <button onClick={handleLogout} className="logout-button">Logout</button>
       </header>
 
-      <h1>AI Expense Tracker</h1>
+      <h1>Expense Tracker</h1>
       <p className="subtitle">Track your spending and get smart financial insights.</p>
 
       <section className="summary-card">
@@ -275,7 +324,7 @@ const App: React.FC = () => {
       </section>
       
       <section className="insights-card">
-        <h3>AI Financial Insights</h3>
+        <h3>Financial Insights</h3>
          <div className="insights-container" aria-live="polite">
           {isLoading && (
             <div>
@@ -286,7 +335,7 @@ const App: React.FC = () => {
           {error && <p className="status-message error-message" role="alert">{error}</p>}
           {insights && <div className="insights-content">{renderInsights()}</div>}
           {!isLoading && !insights && !error && (
-            <p className="status-message">Click the button to get AI-powered insights on your spending.</p>
+            <p className="status-message">Click the button to get insights on your spending.</p>
           )}
         </div>
         <button 
